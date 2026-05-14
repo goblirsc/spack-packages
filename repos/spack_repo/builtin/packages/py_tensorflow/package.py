@@ -548,6 +548,12 @@ class PyTensorflow(Package, CudaPackage, ROCmPackage, PythonExtension):
         when="@2.16.1-rocm-enhanced +rocm",
     )
     patch("set_jit_true.patch", when="@2.18.0-rocm-enhanced: +rocm")
+
+    # Add well_known_types_py_pb2_genproto to the system protobuf BUILD file.
+    # TF's py_proto_library macro always references this target but it is absent
+    # from third_party/systemlibs/protobuf.BUILD (TF issue #60667).
+    patch("system-protobuf-well-known-types.patch")
+
     phases = ["configure", "build", "install"]
 
     def flag_handler(self, name, flags):
@@ -918,6 +924,13 @@ class PyTensorflow(Package, CudaPackage, ROCmPackage, PythonExtension):
 
         filter_file("build:opt --copt=-march=native", "", ".tf_configure.bazelrc")
         filter_file("build:opt --host_copt=-march=native", "", ".tf_configure.bazelrc")
+
+        # Provide the system protobuf include path for the link_proto_files genrule
+        # in third_party/systemlibs/protobuf.BUILD (used when TF_SYSTEM_LIBS includes
+        # com_google_protobuf). The genrule uses $(PROTOBUF_INCLUDE_PATH) as a Bazel
+        # make-variable set via --define.
+        with open(".tf_configure.bazelrc", mode="a") as f:
+            f.write(f"build --define=PROTOBUF_INCLUDE_PATH={spec['protobuf'].prefix.include}\n")
 
     def build(self, spec, prefix):
         # Bazel needs the directory to exist on install
